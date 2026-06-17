@@ -1,0 +1,284 @@
+name: Build OpenWrt XR1710G
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/build-openwrt-xr1710g.yml
+      - README.md
+  workflow_dispatch:
+    inputs:
+      openwrt_repo:
+        description: OpenWrt source repository
+        required: true
+        default: https://github.com/YYH2913/openwrt.git
+      openwrt_ref:
+        description: OpenWrt branch, tag, or commit
+        required: true
+        default: xr1710g
+      target_profile:
+        description: OpenWrt device profile
+        required: true
+        default: econet_xr1710g-ubi
+      wireless_country:
+        description: First-boot wireless country code
+        required: true
+        default: CN
+      fix_5g_channel:
+        description: Force 5 GHz radio to a non-DFS channel on first boot
+        required: true
+        type: boolean
+        default: true
+      extra_config:
+        description: Extra OpenWrt .config lines, one per line
+        required: false
+        default: ""
+      create_release:
+        description: Publish firmware files as a GitHub Release
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: openwrt-xr1710g-${{ github.ref }}-${{ inputs.openwrt_ref || 'xr1710g' }}
+  cancel-in-progress: false
+
+env:
+  SOURCE_DIR: openwrt
+  TARGET: airoha
+  SUBTARGET: an7581
+  OPENWRT_REPO: ${{ inputs.openwrt_repo || 'https://github.com/YYH2913/openwrt.git' }}
+  OPENWRT_REF: ${{ inputs.openwrt_ref || 'xr1710g' }}
+  TARGET_PROFILE: ${{ inputs.target_profile || 'econet_xr1710g-ubi' }}
+  WIRELESS_COUNTRY_CODE: ${{ inputs.wireless_country || 'CN' }}
+  FIX_5G_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.fix_5g_channel) || 'true' }}
+  CREATE_RELEASE: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.create_release) || 'false' }}
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  CCACHE_MAXSIZE: 2G
+
+jobs:
+  build:
+    name: ${{ inputs.target_profile || 'econet_xr1710g-ubi' }} @ ${{ inputs.openwrt_ref || 'xr1710g' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 720
+
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v4
+
+      - name: Free runner disk space
+        run: |
+          set -eux
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc || true
+          docker system prune -af || true
+          df -h
+
+      - name: Install build dependencies
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache clang cmake cpio curl device-tree-compiler file flex \
+            g++ g++-multilib gawk gcc gcc-multilib gettext git gperf help2man \
+            libelf-dev libglib2.0-dev libgmp-dev libltdl-dev libmpc-dev \
+            libmpfr-dev libncurses-dev libpython3-dev libreadline-dev libssl-dev \
+            libtool lld llvm genisoimage ninja-build patch pkgconf python3 \
+            python3-docutils python3-pip python3-ply python3-pyelftools \
+            python3-setuptools qemu-utils re2c rsync squashfs-tools subversion \
+            swig texinfo uglifyjs unzip wget xmlto xxd zlib1g-dev zstd
+
+      - name: Clone OpenWrt source on Linux
+        run: |
+          set -eux
+          mkdir -p "${SOURCE_DIR}"
+          git -C "${SOURCE_DIR}" init
+          git -C "${SOURCE_DIR}" remote add origin "${OPENWRT_REPO}"
+          git -C "${SOURCE_DIR}" fetch --depth 1 origin "${OPENWRT_REF}"
+          git -C "${SOURCE_DIR}" checkout --force FETCH_HEAD
+          git -C "${SOURCE_DIR}" log -1 --oneline
+
+      - name: Restore downloads and ccache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.SOURCE_DIR }}/dl
+            ${{ env.CCACHE_DIR }}
+          key: xr1710g-${{ runner.os }}-${{ inputs.openwrt_ref || 'xr1710g' }}-${{ hashFiles('.github/workflows/build-openwrt-xr1710g.yml') }}
+          restore-keys: |
+            xr1710g-${{ runner.os }}-${{ inputs.openwrt_ref || 'xr1710g' }}-
+            xr1710g-${{ runner.os }}-
+
+      - name: Update and install feeds
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          set -eux
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Add XR1710G first-boot defaults
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          set -eux
+          fix_5g_default=0
+          if [ "${FIX_5G_CHANNEL}" != "false" ]; then
+            fix_5g_default=1
+          fi
+
+          mkdir -p files/etc/uci-defaults
+          cat > files/etc/uci-defaults/99-xr1710g-wireless-defaults <<'EOF'
+          #!/bin/sh
+          # Keep hostapd away from the invalid "00" regulatory domain.
+          country="${WIRELESS_COUNTRY:-__WIRELESS_COUNTRY__}"
+          channel_5g="${XR1710G_5G_CHANNEL:-36}"
+          fix_5g="${XR1710G_FIX_5G_CHANNEL:-__FIX_5G_DEFAULT__}"
+
+          for radio in $(uci -q show wireless | sed -n "s/^\(wireless\.[^.]*\)=wifi-device.*/\1/p"); do
+            uci -q set "${radio}.country=${country}"
+          done
+
+          if [ "${fix_5g}" = "1" ]; then
+            for radio in $(uci -q show wireless | sed -n "s/^\(wireless\.[^.]*\)=wifi-device.*/\1/p"); do
+              band="$(uci -q get "${radio}.band" || true)"
+              hwmode="$(uci -q get "${radio}.hwmode" || true)"
+              htmode="$(uci -q get "${radio}.htmode" || true)"
+
+              case "${band}:${hwmode}:${htmode}" in
+                5g:*|*:11a:*|*:a:*)
+                  uci -q set "${radio}.channel=${channel_5g}"
+                  ;;
+              esac
+            done
+          fi
+
+          uci -q commit wireless
+          exit 0
+          EOF
+          sed -i "s/__WIRELESS_COUNTRY__/${WIRELESS_COUNTRY_CODE}/g" files/etc/uci-defaults/99-xr1710g-wireless-defaults
+          sed -i "s/__FIX_5G_DEFAULT__/${fix_5g_default}/g" files/etc/uci-defaults/99-xr1710g-wireless-defaults
+          chmod +x files/etc/uci-defaults/99-xr1710g-wireless-defaults
+
+      - name: Write build config
+        working-directory: ${{ env.SOURCE_DIR }}
+        env:
+          EXTRA_CONFIG: ${{ inputs.extra_config }}
+        run: |
+          set -eux
+          profile="${TARGET_PROFILE}"
+
+          cat > .config <<EOF
+          CONFIG_TARGET_${TARGET}=y
+          CONFIG_TARGET_${TARGET}_${SUBTARGET}=y
+          CONFIG_TARGET_${TARGET}_${SUBTARGET}_DEVICE_${profile}=y
+          CONFIG_CCACHE=y
+          CONFIG_DEVEL=y
+          CONFIG_KERNEL_BUILD_DOMAIN="github-actions"
+          CONFIG_KERNEL_BUILD_USER="builder"
+          CONFIG_PACKAGE_irqbalance=y
+          CONFIG_PACKAGE_jq=y
+          CONFIG_PACKAGE_curl=y
+          CONFIG_PACKAGE_luci=y
+          CONFIG_PACKAGE_luci-app-firewall=y
+          CONFIG_PACKAGE_luci-app-package-manager=y
+          CONFIG_PACKAGE_luci-app-ttyd=y
+          CONFIG_PACKAGE_luci-app-irqbalance=y
+          CONFIG_PACKAGE_luci-proto-ipv6=y
+          CONFIG_PACKAGE_luci-proto-ppp=y
+          CONFIG_PACKAGE_luci-theme-bootstrap=y
+          CONFIG_PACKAGE_nano=y
+          CONFIG_PACKAGE_ttyd=y
+          # CONFIG_TARGET_ROOTFS_INITRAMFS is not set
+          EOF
+
+          if [ -n "${EXTRA_CONFIG}" ]; then
+            printf '%s\n' "${EXTRA_CONFIG}" >> .config
+          fi
+
+          if [ "${FIX_5G_CHANNEL}" != "false" ]; then
+            cat >> .config <<'EOF'
+          CONFIG_PACKAGE_wireless-regdb=y
+          EOF
+          fi
+
+          grep -q "^CONFIG_TARGET_${TARGET}_${SUBTARGET}_DEVICE_${profile}=y$" .config
+          make defconfig
+          grep -q "^CONFIG_TARGET_${TARGET}_${SUBTARGET}_DEVICE_${profile}=y$" .config || {
+            echo "Device profile was not accepted by OpenWrt Kconfig: ${profile}"
+            grep "^CONFIG_TARGET_${TARGET}_${SUBTARGET}_DEVICE_" .config || true
+            exit 1
+          }
+
+      - name: Download package sources
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          set -eux
+          make download -j"$(nproc)"
+          find dl -size -1024c -type f -print -delete
+
+      - name: Compile firmware
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          set -o pipefail
+          nproc
+          make -j"$(nproc)" || make -j1 V=s
+
+      - name: Collect firmware artifacts
+        id: collect
+        run: |
+          set -eux
+          outdir="artifacts/xr1710g"
+          bindir="${SOURCE_DIR}/bin/targets/${TARGET}/${SUBTARGET}"
+          mkdir -p "${outdir}"
+
+          cp -a "${bindir}"/*.itb "${outdir}/" 2>/dev/null || true
+          cp -a "${bindir}"/*.img "${outdir}/" 2>/dev/null || true
+          cp -a "${bindir}"/*.bin "${outdir}/" 2>/dev/null || true
+          cp -a "${bindir}"/profiles.json "${outdir}/" 2>/dev/null || true
+          cp -a "${bindir}"/sha256sums "${outdir}/upstream-sha256sums" 2>/dev/null || true
+
+          find "${outdir}" -maxdepth 1 -name '*sysupgrade.itb' -type f | grep -q . || {
+            echo "No XR1710G sysupgrade.itb artifact was found in ${bindir}"
+            find "${bindir}" -maxdepth 1 -type f -printf '%f\n' | sort
+            exit 1
+          }
+
+          {
+            echo "OpenWrt repo: ${OPENWRT_REPO}"
+            echo "OpenWrt ref: ${OPENWRT_REF}"
+            echo "OpenWrt commit: $(git -C "${SOURCE_DIR}" rev-parse HEAD)"
+            echo "Target: ${TARGET}/${SUBTARGET}"
+            echo "Profile: ${TARGET_PROFILE}"
+            echo "Wireless country default: ${WIRELESS_COUNTRY_CODE}"
+            echo "5 GHz non-DFS default channel enabled: ${FIX_5G_CHANNEL}"
+            echo
+            echo "For XR1710G HTTP Recovery, use the *-sysupgrade.itb image."
+            echo "Do not flash raw U-Boot artifacts from a system firmware build."
+          } > "${outdir}/BUILDINFO.txt"
+
+          (cd "${outdir}" && find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+          find "${outdir}" -maxdepth 1 -type f -printf '%f\n' | sort
+          echo "artifact_dir=${outdir}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-xr1710g-${{ github.run_number }}
+          path: ${{ steps.collect.outputs.artifact_dir }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Create GitHub Release
+        if: ${{ env.CREATE_RELEASE == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eux
+          safe_ref="$(printf '%s' "${OPENWRT_REF}" | tr '/[:space:]' '-')"
+          tag="xr1710g-${safe_ref}-${{ github.run_number }}"
+          gh release create "${tag}" artifacts/xr1710g/* \
+            --title "OpenWrt XR1710G ${OPENWRT_REF} #${{ github.run_number }}" \
+            --notes-file artifacts/xr1710g/BUILDINFO.txt
