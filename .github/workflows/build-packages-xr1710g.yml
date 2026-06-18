@@ -1,17 +1,11 @@
-name: Build OpenWrt XR1710G
+name: Build OpenWrt XR1710G Packages
 
 on:
   schedule:
-    - cron: "17 18 * * *"
+    - cron: "27 19 * * *"
   repository_dispatch:
     types:
       - openwrt-updated
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/build-openwrt-xr1710g.yml
-      - README.md
   workflow_dispatch:
     inputs:
       openwrt_repo:
@@ -26,21 +20,16 @@ on:
         description: OpenWrt device profile
         required: true
         default: econet_xr1710g-ubi
-      wireless_country:
-        description: First-boot wireless country code
+      package_shards:
+        description: Number of package shards to run
         required: true
-        default: CN
-      fix_5g_channel:
-        description: Force 5 GHz radio to a non-DFS channel on first boot
-        required: true
-        type: boolean
-        default: true
+        default: "12"
       extra_config:
         description: Extra OpenWrt .config lines, one per line
         required: false
         default: ""
       create_release:
-        description: Publish firmware files as a GitHub Release
+        description: Publish package shards as a GitHub Release
         required: true
         type: boolean
         default: true
@@ -49,10 +38,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: openwrt-xr1710g-check-${{ github.ref }}
+  group: openwrt-xr1710g-packages-${{ github.ref }}
   cancel-in-progress: false
 
 env:
+  SOURCE_DIR: openwrt
   TARGET: airoha
   SUBTARGET: an7581
 
@@ -66,8 +56,7 @@ jobs:
       openwrt_repo: ${{ steps.resolve.outputs.openwrt_repo }}
       openwrt_ref: ${{ steps.resolve.outputs.openwrt_ref }}
       target_profile: ${{ steps.resolve.outputs.target_profile }}
-      wireless_country: ${{ steps.resolve.outputs.wireless_country }}
-      fix_5g_channel: ${{ steps.resolve.outputs.fix_5g_channel }}
+      package_shards: ${{ steps.resolve.outputs.package_shards }}
       extra_config: ${{ steps.resolve.outputs.extra_config }}
       create_release: ${{ steps.resolve.outputs.create_release }}
       source_commit: ${{ steps.source.outputs.source_commit }}
@@ -83,15 +72,13 @@ jobs:
           INPUT_OPENWRT_REPO: ${{ inputs.openwrt_repo }}
           INPUT_OPENWRT_REF: ${{ inputs.openwrt_ref }}
           INPUT_TARGET_PROFILE: ${{ inputs.target_profile }}
-          INPUT_WIRELESS_COUNTRY: ${{ inputs.wireless_country }}
-          INPUT_FIX_5G_CHANNEL: ${{ inputs.fix_5g_channel }}
+          INPUT_PACKAGE_SHARDS: ${{ inputs.package_shards }}
           INPUT_EXTRA_CONFIG: ${{ inputs.extra_config }}
           INPUT_CREATE_RELEASE: ${{ inputs.create_release }}
           PAYLOAD_OPENWRT_REPO: ${{ github.event.client_payload.openwrt_repo }}
           PAYLOAD_OPENWRT_REF: ${{ github.event.client_payload.openwrt_ref }}
           PAYLOAD_TARGET_PROFILE: ${{ github.event.client_payload.target_profile }}
-          PAYLOAD_WIRELESS_COUNTRY: ${{ github.event.client_payload.wireless_country }}
-          PAYLOAD_FIX_5G_CHANNEL: ${{ github.event.client_payload.fix_5g_channel }}
+          PAYLOAD_PACKAGE_SHARDS: ${{ github.event.client_payload.package_shards }}
           PAYLOAD_EXTRA_CONFIG: ${{ github.event.client_payload.extra_config }}
           PAYLOAD_CREATE_RELEASE: ${{ github.event.client_payload.create_release }}
         run: |
@@ -99,17 +86,20 @@ jobs:
           openwrt_repo="${INPUT_OPENWRT_REPO:-${PAYLOAD_OPENWRT_REPO:-https://github.com/YYH2913/openwrt.git}}"
           openwrt_ref="${INPUT_OPENWRT_REF:-${PAYLOAD_OPENWRT_REF:-xr1710g}}"
           target_profile="${INPUT_TARGET_PROFILE:-${PAYLOAD_TARGET_PROFILE:-econet_xr1710g-ubi}}"
-          wireless_country="${INPUT_WIRELESS_COUNTRY:-${PAYLOAD_WIRELESS_COUNTRY:-CN}}"
-          fix_5g_channel="${INPUT_FIX_5G_CHANNEL:-${PAYLOAD_FIX_5G_CHANNEL:-true}}"
+          package_shards="${INPUT_PACKAGE_SHARDS:-${PAYLOAD_PACKAGE_SHARDS:-12}}"
           extra_config="${INPUT_EXTRA_CONFIG:-${PAYLOAD_EXTRA_CONFIG:-}}"
           create_release="${INPUT_CREATE_RELEASE:-${PAYLOAD_CREATE_RELEASE:-true}}"
+
+          case "${package_shards}" in
+            4|6|8|10|12) ;;
+            *) package_shards=12 ;;
+          esac
 
           {
             printf 'openwrt_repo=%s\n' "${openwrt_repo}"
             printf 'openwrt_ref=%s\n' "${openwrt_ref}"
             printf 'target_profile=%s\n' "${target_profile}"
-            printf 'wireless_country=%s\n' "${wireless_country}"
-            printf 'fix_5g_channel=%s\n' "${fix_5g_channel}"
+            printf 'package_shards=%s\n' "${package_shards}"
             printf 'create_release=%s\n' "${create_release}"
             printf 'extra_config<<__EXTRA_CONFIG__\n%s\n__EXTRA_CONFIG__\n' "${extra_config}"
           } >> "$GITHUB_OUTPUT"
@@ -132,7 +122,7 @@ jobs:
           if [ -z "${safe_ref}" ]; then
             safe_ref="${source_short}"
           fi
-          release_tag="xr1710g-${safe_ref}-${source_short}"
+          release_tag="xr1710g-packages-${safe_ref}-${source_short}"
 
           {
             printf 'source_commit=%s\n' "${source_commit}"
@@ -154,19 +144,19 @@ jobs:
 
           if [ "${GITHUB_EVENT_NAME}" = "schedule" ] && gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
             should_build=false
-            skip_reason="Release ${RELEASE_TAG} already exists; upstream source has not changed."
+            skip_reason="Release ${RELEASE_TAG} already exists; package shards are already built."
           fi
 
           printf 'should_build=%s\n' "${should_build}" >> "$GITHUB_OUTPUT"
           printf 'skip_reason=%s\n' "${skip_reason}" >> "$GITHUB_OUTPUT"
           if [ "${should_build}" = "true" ]; then
-            echo "Building ${RELEASE_TAG}"
+            echo "Building package shards for ${RELEASE_TAG}"
           else
             echo "${skip_reason}"
           fi
 
   skipped:
-    name: Skip unchanged upstream
+    name: Skip unchanged packages
     runs-on: ubuntu-24.04
     needs: check-upstream
     if: ${{ needs.check-upstream.outputs.should_build != 'true' }}
@@ -174,27 +164,27 @@ jobs:
       - name: Report skip
         run: echo "${{ needs.check-upstream.outputs.skip_reason }}"
 
-  build:
-    name: Build ${{ needs.check-upstream.outputs.target_profile }} @ ${{ needs.check-upstream.outputs.openwrt_ref }}
+  package-shards:
+    name: Packages shard ${{ matrix.shard }}
     runs-on: ubuntu-24.04
     needs: check-upstream
     if: ${{ needs.check-upstream.outputs.should_build == 'true' }}
-    timeout-minutes: 720
-    concurrency:
-      group: openwrt-xr1710g-build
-      cancel-in-progress: false
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     env:
-      SOURCE_DIR: openwrt
       OPENWRT_REPO: ${{ needs.check-upstream.outputs.openwrt_repo }}
       OPENWRT_REF: ${{ needs.check-upstream.outputs.openwrt_ref }}
       OPENWRT_SOURCE_COMMIT: ${{ needs.check-upstream.outputs.source_commit }}
       OPENWRT_SOURCE_SHORT: ${{ needs.check-upstream.outputs.source_short }}
-      RELEASE_TAG: ${{ needs.check-upstream.outputs.release_tag }}
+      SAFE_REF: ${{ needs.check-upstream.outputs.safe_ref }}
+      CACHE_WEEK: ${{ needs.check-upstream.outputs.cache_week }}
       TARGET_PROFILE: ${{ needs.check-upstream.outputs.target_profile }}
-      WIRELESS_COUNTRY_CODE: ${{ needs.check-upstream.outputs.wireless_country }}
-      FIX_5G_CHANNEL: ${{ needs.check-upstream.outputs.fix_5g_channel }}
+      PACKAGE_SHARDS: ${{ needs.check-upstream.outputs.package_shards }}
+      SHARD_INDEX: ${{ matrix.shard }}
       EXTRA_CONFIG: ${{ needs.check-upstream.outputs.extra_config }}
-      CREATE_RELEASE: ${{ needs.check-upstream.outputs.create_release }}
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 2G
 
@@ -240,9 +230,10 @@ jobs:
           path: |
             ${{ env.SOURCE_DIR }}/dl
             ${{ env.CCACHE_DIR }}
-          key: xr1710g-${{ runner.os }}-${{ needs.check-upstream.outputs.safe_ref }}-${{ hashFiles('.github/workflows/build-openwrt-xr1710g.yml') }}
+          key: xr1710g-packages-${{ runner.os }}-${{ env.SAFE_REF }}-${{ env.OPENWRT_SOURCE_SHORT }}-shard-${{ env.SHARD_INDEX }}-${{ hashFiles('.github/workflows/build-packages-xr1710g.yml') }}
           restore-keys: |
-            xr1710g-${{ runner.os }}-${{ needs.check-upstream.outputs.safe_ref }}-
+            xr1710g-packages-${{ runner.os }}-${{ env.SAFE_REF }}-${{ env.OPENWRT_SOURCE_SHORT }}-shard-${{ env.SHARD_INDEX }}-
+            xr1710g-${{ runner.os }}-${{ env.SAFE_REF }}-
             xr1710g-${{ runner.os }}-
 
       - name: Restore weekly toolchain cache
@@ -254,16 +245,16 @@ jobs:
             ${{ env.SOURCE_DIR }}/staging_dir/hostpkg
             ${{ env.SOURCE_DIR }}/staging_dir/toolchain-*
             ${{ env.SOURCE_DIR }}/build_dir/toolchain-*
-          key: xr1710g-toolchain-${{ runner.os }}-${{ needs.check-upstream.outputs.safe_ref }}-${{ needs.check-upstream.outputs.source_short }}-${{ needs.check-upstream.outputs.target_profile }}-${{ needs.check-upstream.outputs.cache_week }}
+          key: xr1710g-toolchain-${{ runner.os }}-${{ env.SAFE_REF }}-${{ env.OPENWRT_SOURCE_SHORT }}-${{ env.TARGET_PROFILE }}-${{ env.CACHE_WEEK }}
           restore-keys: |
-            xr1710g-toolchain-${{ runner.os }}-${{ needs.check-upstream.outputs.safe_ref }}-${{ needs.check-upstream.outputs.source_short }}-${{ needs.check-upstream.outputs.target_profile }}-
+            xr1710g-toolchain-${{ runner.os }}-${{ env.SAFE_REF }}-${{ env.OPENWRT_SOURCE_SHORT }}-${{ env.TARGET_PROFILE }}-
 
       - name: Import released toolchain when cache is unavailable
         id: released-toolchain
         if: ${{ steps.toolchain-cache.outputs.cache-hit != 'true' && steps.toolchain-cache.outputs.cache-matched-key == '' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          TOOLCHAIN_TAG_PREFIX: xr1710g-toolchain-${{ needs.check-upstream.outputs.safe_ref }}-${{ needs.check-upstream.outputs.source_short }}-
+          TOOLCHAIN_TAG_PREFIX: xr1710g-toolchain-${{ env.SAFE_REF }}-${{ env.OPENWRT_SOURCE_SHORT }}-
         run: |
           set -eu
           mkdir -p toolchain-release
@@ -293,22 +284,6 @@ jobs:
           echo "release_toolchain_hit=true" >> "$GITHUB_OUTPUT"
           echo "release_toolchain_tag=${tag}" >> "$GITHUB_OUTPUT"
 
-      - name: Report toolchain import status
-        env:
-          CACHE_HIT: ${{ steps.toolchain-cache.outputs.cache-hit }}
-          CACHE_MATCHED_KEY: ${{ steps.toolchain-cache.outputs.cache-matched-key }}
-          RELEASE_TOOLCHAIN_HIT: ${{ steps.released-toolchain.outputs.release_toolchain_hit }}
-          RELEASE_TOOLCHAIN_TAG: ${{ steps.released-toolchain.outputs.release_toolchain_tag }}
-        run: |
-          set -eu
-          if [ "${CACHE_HIT}" = "true" ] || [ -n "${CACHE_MATCHED_KEY}" ]; then
-            echo "Imported prebuilt toolchain from cache: ${CACHE_MATCHED_KEY:-exact key}"
-          elif [ "${RELEASE_TOOLCHAIN_HIT}" = "true" ]; then
-            echo "Imported prebuilt toolchain from release: ${RELEASE_TOOLCHAIN_TAG}"
-          else
-            echo "No prebuilt toolchain was available; continuing with normal OpenWrt build."
-          fi
-
       - name: Update and install feeds
         working-directory: ${{ env.SOURCE_DIR }}
         run: |
@@ -322,49 +297,7 @@ jobs:
           set -eux
           git clone --depth 1 https://github.com/vernesong/OpenClash.git package/OpenClash
 
-      - name: Add XR1710G first-boot defaults
-        working-directory: ${{ env.SOURCE_DIR }}
-        run: |
-          set -eux
-          fix_5g_default=0
-          if [ "${FIX_5G_CHANNEL}" != "false" ]; then
-            fix_5g_default=1
-          fi
-
-          mkdir -p files/etc/uci-defaults
-          cat > files/etc/uci-defaults/99-xr1710g-wireless-defaults <<'EOF'
-          #!/bin/sh
-          # Keep hostapd away from the invalid "00" regulatory domain.
-          country="${WIRELESS_COUNTRY:-__WIRELESS_COUNTRY__}"
-          channel_5g="${XR1710G_5G_CHANNEL:-36}"
-          fix_5g="${XR1710G_FIX_5G_CHANNEL:-__FIX_5G_DEFAULT__}"
-
-          for radio in $(uci -q show wireless | sed -n "s/^\(wireless\.[^.]*\)=wifi-device.*/\1/p"); do
-            uci -q set "${radio}.country=${country}"
-          done
-
-          if [ "${fix_5g}" = "1" ]; then
-            for radio in $(uci -q show wireless | sed -n "s/^\(wireless\.[^.]*\)=wifi-device.*/\1/p"); do
-              band="$(uci -q get "${radio}.band" || true)"
-              hwmode="$(uci -q get "${radio}.hwmode" || true)"
-              htmode="$(uci -q get "${radio}.htmode" || true)"
-
-              case "${band}:${hwmode}:${htmode}" in
-                5g:*|*:11a:*|*:a:*)
-                  uci -q set "${radio}.channel=${channel_5g}"
-                  ;;
-              esac
-            done
-          fi
-
-          uci -q commit wireless
-          exit 0
-          EOF
-          sed -i "s/__WIRELESS_COUNTRY__/${WIRELESS_COUNTRY_CODE}/g" files/etc/uci-defaults/99-xr1710g-wireless-defaults
-          sed -i "s/__FIX_5G_DEFAULT__/${fix_5g_default}/g" files/etc/uci-defaults/99-xr1710g-wireless-defaults
-          chmod +x files/etc/uci-defaults/99-xr1710g-wireless-defaults
-
-      - name: Write build config
+      - name: Write package build config
         working-directory: ${{ env.SOURCE_DIR }}
         run: |
           set -eux
@@ -374,29 +307,19 @@ jobs:
           CONFIG_TARGET_${TARGET}=y
           CONFIG_TARGET_${TARGET}_${SUBTARGET}=y
           CONFIG_TARGET_${TARGET}_${SUBTARGET}_DEVICE_${profile}=y
+          CONFIG_ALL=y
+          CONFIG_ALL_KMODS=y
+          CONFIG_ALL_NONSHARED=y
+          CONFIG_BUILDBOT=y
           CONFIG_CCACHE=y
+          CONFIG_DEVEL=y
           CONFIG_JSON_OVERVIEW_IMAGE_INFO=y
           CONFIG_KERNEL_BUILD_DOMAIN="github-actions"
           CONFIG_KERNEL_BUILD_USER="builder"
           # CONFIG_PACKAGE_dnsmasq is not set
-          CONFIG_PACKAGE_bash=y
-          CONFIG_PACKAGE_ca-bundle=y
-          CONFIG_PACKAGE_irqbalance=y
-          CONFIG_PACKAGE_jq=y
-          CONFIG_PACKAGE_curl=y
-          CONFIG_PACKAGE_luci=y
           CONFIG_PACKAGE_luci-app-openclash=y
-          CONFIG_PACKAGE_luci-app-firewall=y
-          CONFIG_PACKAGE_luci-app-package-manager=y
-          CONFIG_PACKAGE_luci-app-ttyd=y
-          CONFIG_PACKAGE_luci-app-irqbalance=y
           CONFIG_PACKAGE_luci-compat=y
-          CONFIG_PACKAGE_luci-proto-ipv6=y
-          CONFIG_PACKAGE_luci-proto-ppp=y
-          CONFIG_PACKAGE_luci-theme-bootstrap=y
-          CONFIG_PACKAGE_nano=y
           CONFIG_PACKAGE_dnsmasq-full=y
-          CONFIG_PACKAGE_ttyd=y
           # CONFIG_TARGET_ROOTFS_INITRAMFS is not set
           EOF
 
@@ -404,92 +327,111 @@ jobs:
             printf '%s\n' "${EXTRA_CONFIG}" >> .config
           fi
 
-          if [ "${FIX_5G_CHANNEL}" != "false" ]; then
-            cat >> .config <<'EOF'
-          CONFIG_PACKAGE_wireless-regdb=y
-          EOF
-          fi
-
           grep -q "^CONFIG_TARGET_${TARGET}_${SUBTARGET}_DEVICE_${profile}=y$" .config
           make defconfig
-          grep -q "^CONFIG_TARGET_${TARGET}_${SUBTARGET}_DEVICE_${profile}=y$" .config || {
-            echo "Device profile was not accepted by OpenWrt Kconfig: ${profile}"
-            grep "^CONFIG_TARGET_${TARGET}_${SUBTARGET}_DEVICE_" .config || true
-            exit 1
-          }
 
-      - name: Download package sources
+      - name: Compile assigned packages
         working-directory: ${{ env.SOURCE_DIR }}
         run: |
-          set -eux
-          make download -j"$(nproc)"
-          find dl -size -1024c -type f -print -delete
+          set -u
+          package_list="${GITHUB_WORKSPACE}/package-list-${SHARD_INDEX}.txt"
+          failed_list="${GITHUB_WORKSPACE}/failed-packages-${SHARD_INDEX}.txt"
+          : > "${failed_list}"
 
-      - name: Compile firmware
-        working-directory: ${{ env.SOURCE_DIR }}
-        run: |
-          set -o pipefail
-          nproc
-          make -j"$(nproc)" || make -j1 V=s
+          find package -name Makefile -type f -print0 \
+            | xargs -0 grep -El '^(define Package/|define KernelPackage/)' \
+            | sed 's#/Makefile$##' \
+            | sort \
+            | awk -v shard="${SHARD_INDEX}" -v count="${PACKAGE_SHARDS}" '((NR - 1) % count) == shard { print }' \
+            > "${package_list}"
 
-      - name: Collect firmware artifacts
+          echo "Shard ${SHARD_INDEX}/${PACKAGE_SHARDS} package count: $(wc -l < "${package_list}")"
+          while IFS= read -r pkgdir; do
+            [ -n "${pkgdir}" ] || continue
+            echo "::group::${pkgdir}"
+            if make -j"$(nproc)" "${pkgdir}/compile" IGNORE_ERRORS=m; then
+              echo "OK ${pkgdir}"
+            elif make -j1 V=s "${pkgdir}/compile" IGNORE_ERRORS=m; then
+              echo "OK ${pkgdir} after serial retry"
+            else
+              echo "FAILED ${pkgdir}"
+              printf '%s\n' "${pkgdir}" >> "${failed_list}"
+            fi
+            echo "::endgroup::"
+          done < "${package_list}"
+
+          echo "Failed package count: $(wc -l < "${failed_list}")"
+
+      - name: Collect package shard artifacts
         id: collect
         run: |
           set -eux
-          outdir="artifacts/xr1710g"
-          bindir="${SOURCE_DIR}/bin/targets/${TARGET}/${SUBTARGET}"
+          outdir="artifacts/packages/shard-${SHARD_INDEX}"
           mkdir -p "${outdir}"
 
-          cp -a "${bindir}"/*.itb "${outdir}/" 2>/dev/null || true
-          cp -a "${bindir}"/*.img "${outdir}/" 2>/dev/null || true
-          cp -a "${bindir}"/*.bin "${outdir}/" 2>/dev/null || true
-          cp -a "${bindir}"/profiles.json "${outdir}/" 2>/dev/null || true
-          cp -a "${bindir}"/sha256sums "${outdir}/upstream-sha256sums" 2>/dev/null || true
+          package_files="${outdir}/package-files.txt"
+          {
+            find "${SOURCE_DIR}/bin/packages" -type f \( -name '*.ipk' -o -name '*.apk' \) 2>/dev/null || true
+            find "${SOURCE_DIR}/bin/targets/${TARGET}/${SUBTARGET}/packages" -type f \( -name '*.ipk' -o -name '*.apk' \) 2>/dev/null || true
+          } | sort -u > "${package_files}"
 
-          find "${outdir}" -maxdepth 1 -name '*sysupgrade.itb' -type f | grep -q . || {
-            echo "No XR1710G sysupgrade.itb artifact was found in ${bindir}"
-            find "${bindir}" -maxdepth 1 -type f -printf '%f\n' | sort
-            exit 1
-          }
+          if [ -s "${package_files}" ]; then
+            tar -I 'zstd -T0 -19' -cf "${outdir}/openwrt-xr1710g-packages-shard-${SHARD_INDEX}-${OPENWRT_SOURCE_SHORT}.tar.zst" -T "${package_files}"
+          else
+            echo "No package files were produced by shard ${SHARD_INDEX}." > "${outdir}/NO_PACKAGES.txt"
+          fi
 
+          cp "failed-packages-${SHARD_INDEX}.txt" "${outdir}/FAILED_PACKAGES.txt"
           {
             echo "OpenWrt repo: ${OPENWRT_REPO}"
             echo "OpenWrt ref: ${OPENWRT_REF}"
             echo "OpenWrt commit: ${OPENWRT_SOURCE_COMMIT}"
             echo "Target: ${TARGET}/${SUBTARGET}"
             echo "Profile: ${TARGET_PROFILE}"
+            echo "Build type: package shard ${SHARD_INDEX}/${PACKAGE_SHARDS}"
             echo "Build time: $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S %z')"
-            echo "Wireless country default: ${WIRELESS_COUNTRY_CODE}"
-            echo "5 GHz non-DFS default channel enabled: ${FIX_5G_CHANNEL}"
-            echo
-            echo "For XR1710G HTTP Recovery, use the *-sysupgrade.itb image."
-            echo "Do not flash raw U-Boot artifacts from a system firmware build."
-          } > "${outdir}/BUILDINFO.txt"
+          } > "${outdir}/BUILDINFO-packages-shard-${SHARD_INDEX}.txt"
 
           (cd "${outdir}" && find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
-          find "${outdir}" -maxdepth 1 -type f -printf '%f\n' | sort
           echo "artifact_dir=${outdir}" >> "$GITHUB_OUTPUT"
 
-      - name: Upload firmware artifact
+      - name: Upload package shard artifact
         uses: actions/upload-artifact@v4
         with:
-          name: openwrt-xr1710g-${{ github.run_number }}
+          name: openwrt-xr1710g-packages-shard-${{ matrix.shard }}
           path: ${{ steps.collect.outputs.artifact_dir }}
           if-no-files-found: error
           retention-days: 14
 
-      - name: Create GitHub Release
-        if: ${{ env.CREATE_RELEASE == 'true' }}
+  publish-packages:
+    name: Publish package shards
+    runs-on: ubuntu-24.04
+    needs:
+      - check-upstream
+      - package-shards
+    if: ${{ always() && needs.check-upstream.outputs.should_build == 'true' && needs.check-upstream.outputs.create_release == 'true' }}
+    steps:
+      - name: Download package shard artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: openwrt-xr1710g-packages-shard-*
+          path: release-packages
+          merge-multiple: true
+
+      - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.check-upstream.outputs.release_tag }}
         run: |
           set -eux
-          tag="${RELEASE_TAG}"
           build_time="$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S %z')"
-          if gh release view "${tag}" >/dev/null 2>&1; then
-            echo "Release ${tag} already exists; skipping duplicate release."
-            exit 0
+          find release-packages -type f -printf '%p\n' | sort > release-assets.txt
+
+          mapfile -t assets < release-assets.txt
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" "${assets[@]}" --clobber
+          else
+            gh release create "${RELEASE_TAG}" "${assets[@]}" \
+              --title "路由器固件 ${build_time}" \
+              --notes "XR1710G package shard build for ${{ needs.check-upstream.outputs.openwrt_ref }} ${{ needs.check-upstream.outputs.source_short }}"
           fi
-          gh release create "${tag}" artifacts/xr1710g/* \
-            --title "路由器固件 ${build_time}" \
-            --notes-file artifacts/xr1710g/BUILDINFO.txt

@@ -21,6 +21,8 @@ The firmware workflow also runs once per day to check the configured OpenWrt bra
 
 A separate toolchain workflow runs once per week. It builds the OpenWrt host tools and target toolchain, saves them into the GitHub Actions cache, and uploads a `openwrt-xr1710g-toolchain-*.tar.zst` archive to a GitHub Release. Firmware builds first try to restore that toolchain from cache, then from the matching toolchain release, and fall back to a normal build when no prebuilt toolchain is available.
 
+Packages are built by a separate matrix workflow. It splits real OpenWrt package Makefiles across shards so one GitHub-hosted runner job does not have to compile every package before the six-hour job limit.
+
 The expected system firmware artifact is the `*-sysupgrade.itb` file. For XR1710G HTTP Recovery, upload that `*-sysupgrade.itb` file.
 
 ## Notes
