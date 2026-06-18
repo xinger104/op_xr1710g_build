@@ -445,6 +445,7 @@ jobs:
           cp -a "${bindir}"/*.bin "${outdir}/" 2>/dev/null || true
           cp -a "${bindir}"/profiles.json "${outdir}/" 2>/dev/null || true
           cp -a "${bindir}"/sha256sums "${outdir}/upstream-sha256sums" 2>/dev/null || true
+          cp -a "${SOURCE_DIR}/.config" "${outdir}/openwrt-xr1710g-firmware.config"
 
           find "${outdir}" -maxdepth 1 -name '*sysupgrade.itb' -type f | grep -q . || {
             echo "No XR1710G sysupgrade.itb artifact was found in ${bindir}"

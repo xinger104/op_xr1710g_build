@@ -382,6 +382,7 @@ jobs:
           fi
 
           cp "failed-packages-${SHARD_INDEX}.txt" "${outdir}/FAILED_PACKAGES.txt"
+          cp -a "${SOURCE_DIR}/.config" "${outdir}/openwrt-xr1710g-packages-shard-${SHARD_INDEX}.config"
           {
             echo "OpenWrt repo: ${OPENWRT_REPO}"
             echo "OpenWrt ref: ${OPENWRT_REF}"

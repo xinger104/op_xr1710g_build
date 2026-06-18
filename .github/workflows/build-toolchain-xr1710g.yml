@@ -214,6 +214,7 @@ jobs:
           outdir="artifacts/toolchain"
           archive="openwrt-xr1710g-toolchain-${{ steps.source.outputs.source_short }}-${{ steps.source.outputs.cache_week }}.tar.zst"
           mkdir -p "${outdir}"
+          cp -a "${SOURCE_DIR}/.config" "${outdir}/openwrt-xr1710g-toolchain.config"
 
           tar_paths=()
           for path in \

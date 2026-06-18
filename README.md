@@ -23,6 +23,8 @@ A separate toolchain workflow runs once per week. It builds the OpenWrt host too
 
 Packages are built by a separate matrix workflow. It splits real OpenWrt package Makefiles across shards so one GitHub-hosted runner job does not have to compile every package before the six-hour job limit.
 
+Firmware, toolchain, and package shard releases all include the OpenWrt `.config` used for that build.
+
 The expected system firmware artifact is the `*-sysupgrade.itb` file. For XR1710G HTTP Recovery, upload that `*-sysupgrade.itb` file.
 
 ## Notes
