@@ -155,6 +155,16 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
+      - name: Fix libffi generated header lookup
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          set -eux
+          libffi_makefile="feeds/packages/libs/libffi/Makefile"
+          if [ -f "${libffi_makefile}" ]; then
+            perl -0pi -e 's#^[ \t]*\$\(CP\) .*/fficonfig\.h .*$#\t\$(CP) \$\$(find \$(PKG_BUILD_DIR) -name fficonfig.h -print -quit) \$(1)/usr/include/#m' "${libffi_makefile}"
+            grep -n 'fficonfig.h' "${libffi_makefile}"
+          fi
+
       - name: Add OpenClash package
         working-directory: ${{ env.SOURCE_DIR }}
         run: |
