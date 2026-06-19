@@ -17,7 +17,7 @@ on:
       openwrt_ref:
         description: OpenWrt branch, tag, or commit
         required: true
-        default: master
+        default: openwrt-24.10
       target_profile:
         description: OpenWrt device profile
         required: true
@@ -44,7 +44,7 @@ env:
   TARGET: airoha
   SUBTARGET: an7581
   OPENWRT_REPO: ${{ inputs.openwrt_repo || 'https://github.com/immortalwrt/immortalwrt.git' }}
-  OPENWRT_REF: ${{ inputs.openwrt_ref || 'master' }}
+  OPENWRT_REF: ${{ inputs.openwrt_ref || 'openwrt-24.10' }}
   TARGET_PROFILE: ${{ inputs.target_profile || 'econet_xr1710g-ubi' }}
   EXTRA_CONFIG: ${{ inputs.extra_config || '' }}
   CREATE_RELEASE: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.create_release) || 'true' }}
@@ -53,7 +53,7 @@ env:
 
 jobs:
   toolchain:
-    name: Toolchain ${{ inputs.target_profile || 'econet_xr1710g-ubi' }} @ ${{ inputs.openwrt_ref || 'master' }}
+    name: Toolchain ${{ inputs.target_profile || 'econet_xr1710g-ubi' }} @ ${{ inputs.openwrt_ref || 'openwrt-24.10' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 360
 

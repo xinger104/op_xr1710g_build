@@ -15,7 +15,7 @@ on:
       openwrt_ref:
         description: OpenWrt branch, tag, or commit
         required: true
-        default: master
+        default: openwrt-24.10
       target_profile:
         description: OpenWrt device profile
         required: true
@@ -84,7 +84,7 @@ jobs:
         run: |
           set -eu
           openwrt_repo="${INPUT_OPENWRT_REPO:-${PAYLOAD_OPENWRT_REPO:-https://github.com/immortalwrt/immortalwrt.git}}"
-          openwrt_ref="${INPUT_OPENWRT_REF:-${PAYLOAD_OPENWRT_REF:-master}}"
+          openwrt_ref="${INPUT_OPENWRT_REF:-${PAYLOAD_OPENWRT_REF:-openwrt-24.10}}"
           target_profile="${INPUT_TARGET_PROFILE:-${PAYLOAD_TARGET_PROFILE:-econet_xr1710g-ubi}}"
           package_shards="${INPUT_PACKAGE_SHARDS:-${PAYLOAD_PACKAGE_SHARDS:-12}}"
           extra_config="${INPUT_EXTRA_CONFIG:-${PAYLOAD_EXTRA_CONFIG:-}}"

@@ -5,7 +5,7 @@ This repository contains a GitHub Actions workflow for building OpenWrt firmware
 The default build source is:
 
 - ImmortalWrt tree: `https://github.com/immortalwrt/immortalwrt.git`
-- Branch: `master`
+- Branch: `openwrt-24.10`
 - Target: `airoha/an7581`
 - Device profile: `econet_xr1710g-ubi`
 
@@ -46,7 +46,7 @@ The expected system firmware artifact is the `*-sysupgrade.itb` file. For XR1710
 
 ## References
 
-- ImmortalWrt source: <https://github.com/immortalwrt/immortalwrt/tree/master>
+- ImmortalWrt source: <https://github.com/immortalwrt/immortalwrt/tree/openwrt-24.10>
 - YYH2913 XR1710G source overlay: <https://github.com/YYH2913/openwrt/tree/xr1710g>
 - W1700K UBI build workflow reference: <https://github.com/OpenWRT-fanboy/w1700k-ubi-build>
 - XR1710G U-Boot and HTTP Recovery notes: <https://github.com/YYH2913/http-uboot-xr1710g>
