@@ -263,6 +263,18 @@ jobs:
 
           grep -q '^define Device/econet_xr1710g-ubi$' target/linux/airoha/image/an7581.mk
 
+      - name: Fix Airoha offload sk_buff declaration
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          set -eux
+          header="target/linux/airoha/files/include/linux/soc/airoha/airoha_offload.h"
+          if [ ! -f "${header}" ]; then
+            echo "Airoha offload header not found; skipping."
+            exit 0
+          fi
+          perl -0pi -e 's/(^#include [^\n]*\n)/#include <linux\/skbuff.h>\n$1/m unless /#include <linux\/skbuff\.h>/' "${header}"
+          grep -n -A3 -B3 'skbuff.h' "${header}"
+
       - name: Restore downloads and ccache
         uses: actions/cache@v4
         with:
