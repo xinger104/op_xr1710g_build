@@ -269,6 +269,17 @@ jobs:
           EOF
           grep -n -A8 -B2 'skbuff.h' "${patch_file}"
 
+      - name: Seed Airoha kernel config defaults
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          set -eux
+          kernel_config="target/linux/airoha/config-6.6"
+          test -f "${kernel_config}"
+          if ! grep -Eq '^(CONFIG_SND_SOC_AN7581=|# CONFIG_SND_SOC_AN7581 is not set)' "${kernel_config}"; then
+            printf '\n# CONFIG_SND_SOC_AN7581 is not set\n' >> "${kernel_config}"
+          fi
+          grep -n 'SND_SOC_AN7581' "${kernel_config}"
+
       - name: Restore downloads and ccache
         uses: actions/cache@v4
         with:
