@@ -584,14 +584,6 @@ jobs:
             }
           done
 
-      - name: Compile package kernel prerequisites
-        if: ${{ matrix.shard == 0 }}
-        working-directory: ${{ env.SOURCE_DIR }}
-        run: |
-          set -o pipefail
-          nproc
-          make -j"$(nproc)" target/linux/compile || make -j1 V=s target/linux/compile
-
       - name: Compile fallback tools and toolchain
         if: ${{ steps.toolchain-cache.outputs.cache-hit != 'true' && steps.toolchain-cache.outputs.cache-matched-key == '' && steps.released-toolchain.outputs.release_toolchain_hit != 'true' }}
         working-directory: ${{ env.SOURCE_DIR }}
@@ -599,6 +591,14 @@ jobs:
           set -o pipefail
           nproc
           make -j"$(nproc)" tools/install toolchain/install || make -j1 V=s tools/install toolchain/install
+
+      - name: Compile package kernel prerequisites
+        if: ${{ matrix.shard == 0 }}
+        working-directory: ${{ env.SOURCE_DIR }}
+        run: |
+          set -o pipefail
+          nproc
+          make -j"$(nproc)" target/linux/compile || make -j1 V=s target/linux/compile
 
       - name: Compile required LuCI packages
         if: ${{ matrix.shard == 0 }}
