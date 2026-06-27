@@ -11,8 +11,8 @@ on:
       openwrt_repo:
         description: OpenWrt/ImmortalWrt source repository
         required: true
-        default: https://github.com/YYH2913/openwrt.git
-        #default: https://github.com/openwrt/openwrt.git
+        #default: https://github.com/YYH2913/openwrt.git
+        default: https://github.com/openwrt/openwrt.git
         #default: https://github.com/immortalwrt/immortalwrt.git
       openwrt_ref:
         description: OpenWrt branch, tag, or commit
