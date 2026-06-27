@@ -56,7 +56,7 @@ env:
 jobs:
   skip-unsuccessful-toolchain:
     name: Skip firmware after unsuccessful toolchain
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' }}
     steps:
       - name: Report skip
@@ -66,7 +66,7 @@ jobs:
 
   check-upstream:
     name: Check OpenWrt source
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     outputs:
       should_build: ${{ steps.decision.outputs.should_build }}
@@ -179,7 +179,7 @@ jobs:
 
   skipped:
     name: Skip unchanged upstream
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     needs: check-upstream
     if: ${{ needs.check-upstream.outputs.should_build != 'true' }}
     steps:
@@ -188,7 +188,7 @@ jobs:
 
   build:
     name: Build ${{ needs.check-upstream.outputs.target_profile }} @ ${{ needs.check-upstream.outputs.openwrt_ref }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     needs: check-upstream
     if: ${{ needs.check-upstream.outputs.should_build == 'true' }}
     timeout-minutes: 720
