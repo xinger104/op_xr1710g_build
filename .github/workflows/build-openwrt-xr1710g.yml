@@ -104,8 +104,8 @@ jobs:
           PAYLOAD_CREATE_RELEASE: ${{ github.event.client_payload.create_release }}
         run: |
           set -eu
-          openwrt_repo="${INPUT_OPENWRT_REPO:-${PAYLOAD_OPENWRT_REPO:-https://github.com/immortalwrt/immortalwrt.git}}"
-          openwrt_ref="${INPUT_OPENWRT_REF:-${PAYLOAD_OPENWRT_REF:-openwrt-24.10}}"
+          openwrt_repo="${INPUT_OPENWRT_REPO:-${PAYLOAD_OPENWRT_REPO:-${{ inputs.openwrt_repo }}}}"
+          openwrt_ref="${INPUT_OPENWRT_REF:-${PAYLOAD_OPENWRT_REF:-${{ inputs.openwrt_ref }}}}"
           target_profile="${INPUT_TARGET_PROFILE:-${PAYLOAD_TARGET_PROFILE:-gemtek_xr1710g-ubi}}"
           wireless_country="${INPUT_WIRELESS_COUNTRY:-${PAYLOAD_WIRELESS_COUNTRY:-CN}}"
           fix_5g_channel="${INPUT_FIX_5G_CHANNEL:-${PAYLOAD_FIX_5G_CHANNEL:-true}}"
